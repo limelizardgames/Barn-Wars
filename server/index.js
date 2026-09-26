@@ -42,7 +42,13 @@ app.get('/api/rooms', (_req, res) => {
 if (fs.existsSync(DIST)) {
   app.use(express.static(DIST));
 } else {
-  app.get('/', (_req, res) => res.type('text').send('Barn Wars server running. Build the client with `npm run build`, or use `npm run dev`.'));
+  // No built client: in `npm run dev` the game is served by Vite on :5173, so send players there.
+  app.get('/', (req, res) => {
+    const host = String(req.hostname).replace(/[^\w.\-\[\]:]/g, '');
+    const url = `http://${host}:5173/`;
+    res.type('html').send(`<!doctype html><meta http-equiv="refresh" content="0; url=${url}">
+<p style="font-family:sans-serif">Barn Wars is at <a href="${url}">${url}</a>. (To serve it from this port instead, run <code>npm run build</code> then <code>npm start</code>.)</p>`);
+  });
 }
 
 io.on('connection', (socket) => {
