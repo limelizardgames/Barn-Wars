@@ -1,7 +1,9 @@
 // Visual representation of one fighter: model, nameplate, status effects, animation.
 import * as THREE from 'three';
 import { buildAnimal, accentFor } from '../assets/animals.js';
+import { buildSculptedAnimal, hasSculptedModel } from '../assets/rig.js';
 import { getAnimal } from '../../../shared/animals.js';
+import { Animator } from './animator.js';
 
 const STAR_MAT = new THREE.MeshBasicMaterial({ color: '#ffe14a' });
 const SHIELD_MAT = new THREE.MeshStandardMaterial({
@@ -13,33 +15,33 @@ export class PlayerView {
     this.scene = scene;
     this.id = state.id;
     this.isLocal = isLocal;
+    this.accent = accentFor(this.id);
     this.group = new THREE.Group();
+    this.yawGroup = new THREE.Group();
+    this.pose = new THREE.Group();
+    this.group.add(this.yawGroup);
+    this.yawGroup.add(this.pose);
     scene.add(this.group);
     this.animalId = null;
-    this.walkPhase = 0;
-    this.attackT = 0;
     this.lastAct = state.act || 0;
-    this.deathT = 0;
-    this.visible = true;
+    this.deadT = 0;
+    this.wasAlive = !!state.alive;
     this.hp = -1;
     this.name = '';
     this.yaw = state.yaw || 0;
-    this.renderPos = new THREE.Vector3(state.x, state.y, state.z);
 
     this.nameplate = this.makeNameplate();
     this.group.add(this.nameplate.sprite);
 
-    // local-player marker ring
-    if (isLocal) {
-      const ring = new THREE.Mesh(
-        new THREE.RingGeometry(0.9, 1.1, 24),
-        new THREE.MeshBasicMaterial({ color: '#ffe14a', transparent: true, opacity: 0.6, depthWrite: false }),
-      );
-      ring.rotation.x = -Math.PI / 2;
-      ring.position.y = 0.06;
-      this.group.add(ring);
-      this.marker = ring;
-    }
+    // ground ring: gold for you, the player's accent colour for everyone else
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.85, isLocal ? 1.1 : 1.0, 32),
+      new THREE.MeshBasicMaterial({ color: isLocal ? '#ffe14a' : this.accent, transparent: true, opacity: isLocal ? 0.65 : 0.4, depthWrite: false }),
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.06;
+    this.group.add(ring);
+    this.marker = ring;
 
     // stun stars
     this.stars = new THREE.Group();
@@ -53,28 +55,32 @@ export class PlayerView {
     this.group.add(this.stars);
 
     // shield bubble
-    this.shield = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), SHIELD_MAT);
+    this.shield = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 2), SHIELD_MAT);
     this.shield.visible = false;
     this.group.add(this.shield);
 
     this.setAnimal(state.animal);
     this.setName(state.name);
+    if (state.alive) this.animator.spawn();
   }
 
   setAnimal(id) {
-    if (id === this.animalId) return;
-    if (this.model) this.group.remove(this.model.root);
+    if (id === this.animalId && !(this.fallback && hasSculptedModel(id))) return;
+    if (this.model) this.pose.remove(this.model.root);
     this.animalId = id;
     this.def = getAnimal(id);
-    this.model = buildAnimal(id, accentFor(this.id));
-    this.group.add(this.model.root);
+    const sculpted = buildSculptedAnimal(id);
+    this.fallback = !sculpted;
+    this.model = sculpted || buildAnimal(id, this.accent);
+    this.pose.add(this.model.root);
+    this.animator = new Animator(this.model, id, this.def);
     const h = this.def.stats.height;
     this.nameplate.sprite.position.y = h + 0.9;
     this.stars.position.y = h + 0.35;
     const r = this.def.stats.radius;
-    this.shield.scale.set(r * 1.5, h * 0.8, r * 1.5);
+    this.shield.scale.set(r * 1.6, h * 0.85, r * 1.6);
     this.shield.position.y = h * 0.5;
-    if (this.marker) this.marker.scale.setScalar(r * 1.1);
+    this.marker.scale.setScalar(r * 1.1);
     this.hp = -1;
   }
 
@@ -107,7 +113,12 @@ export class PlayerView {
     ctx.fillStyle = this.isLocal ? '#ffe14a' : '#ffffff';
     ctx.strokeText(this.name, 128, 26);
     ctx.fillText(this.name, 128, 26);
-    // hp bar
+    // accent pip so same-animal players are easy to tell apart
+    ctx.fillStyle = this.accent;
+    ctx.beginPath();
+    ctx.arc(34, 45, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
     const w = 160, x = 48, y = 38;
     ctx.fillStyle = 'rgba(0,0,0,0.65)';
     ctx.fillRect(x - 2, y - 2, w + 4, 16);
@@ -117,40 +128,41 @@ export class PlayerView {
     tex.needsUpdate = true;
   }
 
+  hurt() {
+    this.animator?.hurt();
+  }
+
   // Called every frame with the interpolated (or predicted) state.
   update(dt, s, time) {
-    if (s.animal && s.animal !== this.animalId) this.setAnimal(s.animal);
+    if (s.animal && (s.animal !== this.animalId || (this.fallback && hasSculptedModel(s.animal)))) this.setAnimal(s.animal);
     if (s.name) this.setName(s.name);
 
-    const rig = this.model.rig;
     const alive = !!s.alive;
-
-    // death animation: tip over, then hide
     if (!alive) {
-      this.deathT += dt;
-      if (this.deathT < 0.6) {
-        this.model.root.rotation.z = Math.min(Math.PI / 2, this.deathT * 5);
-        this.group.visible = true;
-      } else {
-        this.group.visible = false;
-      }
+      this.deadT += dt;
+      this.wasAlive = false;
+      this.animator.updateDead(dt, this.deadT, this.pose);
+      this.group.visible = this.deadT < 1.1;
+      this.stars.visible = this.shield.visible = false;
+      this.marker.visible = false;
+      this.nameplate.sprite.visible = false;
       return;
     }
-    if (this.deathT > 0) {
-      this.deathT = 0;
-      this.model.root.rotation.z = 0;
+    if (!this.wasAlive) {
+      this.wasAlive = true;
+      this.deadT = 0;
+      this.animator.spawn();
     }
     this.group.visible = true;
+    this.marker.visible = true;
 
     this.group.position.set(s.x, s.y, s.z);
-    // smooth yaw for remote players
     let d = s.yaw - this.yaw;
     while (d > Math.PI) d -= Math.PI * 2;
     while (d < -Math.PI) d += Math.PI * 2;
     this.yaw += d * Math.min(1, dt * (this.isLocal ? 30 : 15));
-    this.model.root.rotation.y = this.yaw;
+    this.yawGroup.rotation.y = this.yaw;
 
-    // nameplate
     const hp = Math.ceil(s.hp);
     if (hp !== this.hp) {
       this.hp = hp;
@@ -158,62 +170,27 @@ export class PlayerView {
     }
     this.nameplate.sprite.visible = !this.isLocal;
 
-    // attack trigger
     if (s.act !== undefined && s.act !== this.lastAct) {
       this.lastAct = s.act;
-      this.attackT = 0.3;
-    }
-    this.attackT = Math.max(0, this.attackT - dt);
-
-    // walking cycle
-    const moving = s.moving && s.grounded;
-    const speed = this.def.stats.speed * (s.speedMult || 1);
-    if (moving) this.walkPhase += dt * speed * (rig.biped ? 2.6 : 1.6);
-    const swing = moving ? Math.sin(this.walkPhase) * (rig.biped ? 0.8 : 0.6) : 0;
-    rig.legs.forEach((l, i) => {
-      const phase = rig.biped ? (i === 0 ? 1 : -1) : (i === 0 || i === 3 ? 1 : -1);
-      const target = s.grounded ? swing * phase : (i < 2 ? -0.6 : 0.6);
-      l.rotation.x += (target - l.rotation.x) * Math.min(1, dt * 15);
-    });
-    const bob = moving ? Math.abs(Math.sin(this.walkPhase)) * 0.08 : Math.sin(time * 2) * 0.02;
-    rig.body.position.y = rig.bodyY + bob;
-
-    // dash lean / attack lunge
-    const lunge = this.attackT > 0 ? Math.sin((this.attackT / 0.3) * Math.PI) : 0;
-    rig.head.position.z = rig.headZ + lunge * 0.3;
-    rig.body.rotation.x = (s.dashT > 0 ? 0.25 : 0) + lunge * 0.12;
-    if (rig.tail) rig.tail.rotation.z = Math.sin(time * 6 + this.walkPhase) * 0.3;
-    if (rig.wings) {
-      const flap = !s.grounded || this.attackT > 0 ? Math.sin(time * 30) * 0.9 : 0;
-      rig.wings[0].rotation.z = -Math.abs(flap);
-      rig.wings[1].rotation.z = Math.abs(flap);
-    }
-    if (rig.wool) {
-      const puff = s.shieldT > 0 ? 1.25 : 1;
-      rig.wool.scale.lerp(new THREE.Vector3(puff, puff, puff), Math.min(1, dt * 8));
+      if (s.actSlot) this.animator.trigger(s.actSlot);
     }
 
-    // statuses
-    // blinking
-    if (rig.eyes) {
-      this.blinkT = (this.blinkT ?? 1 + Math.random() * 3) - dt;
-      const closed = this.blinkT < 0.12 || s.stunT > 0;
-      if (this.blinkT < 0) this.blinkT = 2 + Math.random() * 4;
-      for (const e of rig.eyes) e.scale.y = closed ? 0.15 : 1;
-    }
+    this.animator.update(dt, { ...s, yaw: this.yaw }, time, this.pose, this.group.position);
 
     this.stars.visible = s.stunT > 0;
     if (this.stars.visible) this.stars.rotation.y = time * 5;
     this.shield.visible = s.shieldT > 0 && this.animalId !== 'sheep';
     if (this.shield.visible) this.shield.rotation.y = time;
+    this.marker.material.opacity = (this.isLocal ? 0.65 : 0.4) * (s.prot ? 0.5 + 0.5 * Math.sin(time * 12) : 1);
 
-    // spawn protection blink
-    this.model.root.visible = !(s.prot && Math.floor(time * 10) % 2 === 0);
+    // spawn protection: gentle shimmer instead of harsh blinking
+    this.model.root.visible = !(s.prot && Math.floor(time * 8) % 3 === 0);
   }
 
   dispose() {
     this.scene.remove(this.group);
     this.nameplate.tex.dispose();
     this.nameplate.sprite.material.dispose();
+    for (const m of this.model?.materials || []) m.dispose();
   }
 }

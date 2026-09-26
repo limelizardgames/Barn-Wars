@@ -2,7 +2,7 @@
 
 A 3D multiplayer barnyard brawler that runs in the browser. Pick an animal, then fight the rest of the farm.
 
-Built with **Three.js** (client), **Node + Socket.IO** (authoritative server) and **Vite**. All art and sound are generated in code, so there are no asset files to download.
+Built with **Three.js** (client), **Node + Socket.IO** (authoritative server) and **Vite**. The six fighters are sculpted, textured models (`client/public/models/*.glb`) that the game rigs and animates procedurally; the farm, props, wildlife and all sound are generated in code.
 
 ## Quick start
 
@@ -34,6 +34,7 @@ Open the game in several tabs or on several machines to play together. Use the *
 | Ability 2 | E (or Left Shift) |
 | Scoreboard | Tab |
 | Minimap zoom (local / whole farm) | N |
+| Graphics quality (High / Low) | G |
 | Chat | Enter |
 | Mute | M |
 | Pause / release mouse | Esc |
@@ -69,8 +70,10 @@ server/
 client/
   index.html       menu + HUD markup
   src/main.js      menu → game bootstrap
-  src/assets/      procedural models + painted canvas textures (animals, farm, projectiles)
-  src/game/        renderer, prediction/interpolation, input, effects, synth audio
+  public/models/   sculpted animal models (GLB)
+  src/assets/      rigging, farm, props, wildlife, painted textures, projectiles
+  src/game/        renderer + post-processing, animation, prediction/interpolation, input, effects, audio
+tools/             asset pipeline (FBX -> GLB)
   src/ui/          menu (with 3D preview), HUD and minimap
 test/              node:test suites for the server simulation
 ```
@@ -81,8 +84,19 @@ test/              node:test suites for the server simulation
 - Clients send one input frame per tick. They predict their own movement with the same `shared/physics.js` code, then reconcile against the server by replaying inputs it has not yet acknowledged.
 - Other fighters are rendered about 110 ms in the past and interpolated between snapshots.
 
+### Animal models & animation
+
+- `tools/convert-models.mjs` turns the source FBX files into the compact GLBs in `client/public/models/` (bakes the rest pose, welds vertices, strips stray fragments, shrinks textures to 1024px). Run it with `npm i --no-save sharp && node tools/convert-models.mjs <folder>`.
+- `client/src/assets/rig.js` gives every model a consistent skeleton (body, neck, head, tail, two-segment legs, wings for the chicken) from per-animal joint positions and computes the skin weights at load time.
+- `client/src/game/animator.js` drives the bones: trot/gallop/waddle gaits with knee bend, turning lean, jump tuck and landing squash, idle grazing and pecking, a signature animation for every move, hurt flinch, stun wobble, cartoon death and spawn pop.
+- If a model fails to load, the older primitive model in `client/src/assets/animals.js` is used instead.
+
+### Graphics
+
+High quality (default) renders through a post-processing chain: multisampled antialiasing, ground-truth ambient occlusion and a soft bloom. Press **G** to switch to Low; the game also drops to Low automatically if the frame rate is poor for the first few seconds.
+
 ### Adding a new animal
 
 1. Add an entry to `shared/animals.js`. Moves reuse the existing types: `melee`, `projectile`, `dash`, `leap`, `shout`, `buff`.
-2. Add a model builder in `client/src/assets/animals.js`, plus an emoji and a call sound in `client/src/game/audio.js`.
+2. Add a model: a GLB in `client/public/models/` plus a joint layout in `client/src/assets/rig.js` (and optionally a primitive fallback in `client/src/assets/animals.js`), an emoji, a call sound in `client/src/game/audio.js`, and its move animations in `client/src/game/animator.js`.
 3. Add bot names in `server/bot.js`.

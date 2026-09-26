@@ -5,6 +5,8 @@ import {
   mat, smooth, box, rbox, sphere, ball, cyl, cone, group, outline, mulberry,
 } from './kit.js';
 import { planks, boards, shingles, straw, stone, corrugated, grassDetail, dirt } from './textures.js';
+import { buildProps } from './props.js';
+import { buildWildlife } from './wildlife.js';
 import { ARENA_HALF, OBSTACLES, MUD_PITS, PONDS, CORN_FIELDS } from '../../../shared/arena.js';
 
 const A = ARENA_HALF;
@@ -12,7 +14,9 @@ const WHITE = smooth('#f4efe4');
 const WOOD = smooth('#8a5a33');
 const WOOD_DARK = smooth('#5e3b1f');
 const METAL = smooth('#9aa3a8', { metalness: 0.5, roughness: 0.45 });
-const LEAF = [mat('#4f9a3a'), mat('#3f8a33'), mat('#63ad45'), mat('#579f3c')];
+const LEAF = ['#4f9a3a', '#3f8a33', '#63ad45', '#579f3c'].map((c) => addFoliageWind(
+  new THREE.MeshStandardMaterial({ color: c, flatShading: true, roughness: 0.9 }), 0.09,
+));
 
 // Shared wind clock for grass, corn and foliage shaders.
 const wind = { value: 0 };
@@ -45,6 +49,26 @@ function addWind(material, amount = 0.12, instanced = true) {
   material.customProgramCacheKey = () => `wind-${amount}-${instanced}`;
   return material;
 }
+
+// Foliage sway for ordinary (non-instanced) meshes, driven by world position.
+export function addFoliageWind(material, amount = 0.08) {
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uWind = wind;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nuniform float uWind;')
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        vec4 fWorld = modelMatrix * vec4(transformed, 1.0);
+        float fPhase = uWind * 1.3 + fWorld.x * 0.13 + fWorld.z * 0.11;
+        float fAmt = clamp((fWorld.y - 2.0) * 0.25, 0.0, 1.5) * ${amount.toFixed(3)};
+        transformed.x += sin(fPhase) * fAmt;
+        transformed.z += cos(fPhase * 0.7) * fAmt * 0.7;
+        transformed.y += sin(fPhase * 1.9 + fWorld.y) * fAmt * 0.3;`);
+  };
+  material.customProgramCacheKey = () => `foliage-${amount}`;
+  return material;
+}
+
+export { wind };
 
 // Height of the rolling hills outside the fence.
 function hillHeight(x, z) {
@@ -153,6 +177,8 @@ export function buildEnvironment(scene, renderer = null) {
   buildGrass(world, paint.isBare);
   buildFlowers(world, paint.isBare);
   const clouds = buildClouds(world);
+  const props = buildProps(world);
+  const wildlife = buildWildlife(scene);
 
   return {
     world,
@@ -171,6 +197,10 @@ export function buildEnvironment(scene, renderer = null) {
         cl.position.x += dt * cl.userData.speed;
         if (cl.position.x > 320) cl.position.x = -320;
       }
+      props.update(dt, t);
+    },
+    updateLife(dt, t, camera) {
+      wildlife.update(dt, t, camera);
     },
     followSun(target) {
       sun.position.set(target.x + 40, 70, target.z + 25);
@@ -722,14 +752,25 @@ function buildPond(world, p, bobbers) {
   deep.position.set(p.x, 0.04, p.z);
   world.add(deep);
   const waterMat = new THREE.MeshStandardMaterial({
-    color: '#4aa3d0', roughness: 0.05, metalness: 0.3, transparent: true, opacity: 0.78,
+    color: '#3f98c8', roughness: 0.08, metalness: 0.25, transparent: true, opacity: 0.82,
   });
   waterMat.onBeforeCompile = (shader) => {
     shader.uniforms.uWind = wind;
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uWind;')
+      .replace('#include <common>', '#include <common>\nuniform float uWind;\nvarying vec2 vRipple;')
       .replace('#include <begin_vertex>', `#include <begin_vertex>
+        vRipple = position.xy;
         transformed.z += sin(position.x * 1.3 + uWind * 1.5) * 0.04 + cos(position.y * 1.1 + uWind * 1.2) * 0.04;`);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float uWind;\nvarying vec2 vRipple;')
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        vec2 rp = vRipple;
+        float t = uWind;
+        vec2 slope = vec2(
+          sin(rp.x * 2.1 + t * 2.0) * 0.5 + sin(rp.x * 5.3 + rp.y * 3.1 - t * 3.1) * 0.35 + sin(length(rp) * 4.0 - t * 2.4) * 0.3,
+          cos(rp.y * 1.9 + t * 1.7) * 0.5 + cos(rp.y * 4.7 - rp.x * 2.6 + t * 2.7) * 0.35 + cos(length(rp) * 4.0 - t * 2.4) * 0.3
+        ) * 0.18;
+        normal = normalize(normal + (viewMatrix * vec4(slope.x, 0.0, slope.y, 0.0)).xyz);`);
   };
   const water = new THREE.Mesh(new THREE.RingGeometry(0.01, p.r - 0.2, 48, 12), waterMat);
   water.rotation.x = -Math.PI / 2;
@@ -933,20 +974,38 @@ function buildFlowers(world, isBare) {
 }
 
 function buildClouds(world) {
-  const cloudMat = smooth('#ffffff', { roughness: 1, emissive: '#ffffff', emissiveIntensity: 0.15 });
+  const tex = new THREE.CanvasTexture((() => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const ctx = c.getContext('2d');
+    const g = ctx.createRadialGradient(64, 64, 4, 64, 64, 62);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.45, 'rgba(255,255,255,0.85)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 128, 128);
+    return c;
+  })());
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const lit = new THREE.SpriteMaterial({ map: tex, color: '#ffffff', transparent: true, depthWrite: false, fog: false, opacity: 0.95 });
+  const shade = new THREE.SpriteMaterial({ map: tex, color: '#dfe7ef', transparent: true, depthWrite: false, fog: false, opacity: 0.9 });
   const rng = mulberry(11);
   const clouds = [];
-  for (let i = 0; i < 18; i++) {
-    const g = group(world, (rng() - 0.5) * 640, 60 + rng() * 35, (rng() - 0.5) * 480);
-    const n = 4 + Math.floor(rng() * 4);
+  for (let i = 0; i < 22; i++) {
+    const g = group(world, (rng() - 0.5) * 640, 70 + rng() * 40, (rng() - 0.5) * 520);
+    const n = 6 + Math.floor(rng() * 6);
+    const w = 20 + rng() * 25;
     for (let j = 0; j < n; j++) {
-      const s = ball(4 + rng() * 4, cloudMat, j * 4.5 - n * 2.2, rng() * 2, (rng() - 0.5) * 4, g, 12);
-      s.scale.y = 0.7;
-      s.castShadow = false;
+      const top = rng() < 0.6;
+      const sp = new THREE.Sprite(top ? lit : shade);
+      const size = 10 + rng() * 14;
+      sp.scale.set(size * 1.4, size, 1);
+      sp.position.set((rng() - 0.5) * w, top ? rng() * 5 : -2 - rng() * 2, (rng() - 0.5) * w * 0.4);
+      sp.renderOrder = -1;
+      g.add(sp);
     }
     g.userData.speed = 1.5 + rng() * 2.5;
     clouds.push(g);
   }
   return clouds;
 }
-

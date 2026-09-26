@@ -5,6 +5,7 @@ import { Menu } from './ui/menu.js';
 import { Hud } from './ui/hud.js';
 import { Game } from './game/Game.js';
 import { initAudio, sfx } from './game/audio.js';
+import { preloadAnimalModels } from './assets/rig.js';
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -27,6 +28,8 @@ roomInput.value = params.get('room') || store.get('bw-room', '');
 
 const menu = new Menu({ onSelect: (id) => { chosen = id; store.set('bw-animal', id); } });
 menu.select(chosen);
+// swap the preview to the sculpted model once the models have downloaded
+preloadAnimalModels().then(() => menu.showModel(menu.selected));
 
 let game = null;
 

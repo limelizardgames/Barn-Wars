@@ -10,6 +10,7 @@ import { PlayerView } from './PlayerView.js';
 import { Effects } from './effects.js';
 import { Input } from './input.js';
 import { Minimap } from '../ui/minimap.js';
+import { Graphics } from './graphics.js';
 import { sfx, toggleMute } from './audio.js';
 
 const HIT_COLORS = {
@@ -44,6 +45,7 @@ export class Game {
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(70, 1, 0.1, 1500);
     this.env = buildEnvironment(this.scene, this.renderer);
+    this.graphics = new Graphics(this.renderer, this.scene, this.camera, this.env.sun);
     this.minimap = new Minimap(document.getElementById('minimap'));
     this.effects = new Effects(this.scene);
     this.input = new Input(canvas);
@@ -118,6 +120,8 @@ export class Game {
       } else if (code === 'Enter' && down) {
         this.openChat();
         e.preventDefault();
+      } else if (code === 'KeyG' && down) {
+        this.hud.announce(`Graphics: ${this.graphics.toggle() === 'high' ? 'High' : 'Low'}`, 1000);
       } else if (code === 'KeyN' && down) {
         this.minimap.toggleZoom();
       } else if (code === 'KeyM' && down) {
@@ -155,7 +159,8 @@ export class Game {
 
   resize() {
     const w = window.innerWidth, h = window.innerHeight;
-    this.renderer.setSize(w, h, false);
+    if (this.graphics) this.graphics.resize(w, h);
+    else this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
   }
@@ -171,6 +176,7 @@ export class Game {
     this.input.enabled = false;
     this.input.releaseLock();
     window.removeEventListener('resize', this.onResize);
+    this.graphics.dispose();
     this.renderer.dispose();
     if (this.onLeave) this.onLeave();
   }
@@ -342,9 +348,11 @@ export class Game {
     this.effects.update(dt);
     this.env.update(dt, this.time);
     this.updateCamera(dt);
+    this.env.updateLife(dt, this.time, this.camera);
     this.updateHud(dt, now);
 
-    this.renderer.render(this.scene, this.camera);
+    const note = this.graphics.render(dt);
+    if (note) this.hud.announce(note, 3500);
   }
 
   renderPlayers({ a, b, k }, dt) {
@@ -536,6 +544,7 @@ export class Game {
       }
       case 'hit': {
         const target = snap.byId.get(e.id);
+        this.views.get(e.id)?.hurt();
         const colors = HIT_COLORS[target?.animal] || ['#ffffff'];
         this.effects.burst(e.x, e.y, e.z, { count: 10, colors, speed: 5, up: 4, size: 0.14, life: 0.6 });
         sfx.hit(vol, pan);
@@ -548,7 +557,7 @@ export class Game {
           this.hud.hurt(e.dmg);
           sfx.hurt();
           this.shake = Math.min(0.6, this.shake + e.dmg / 60);
-        } else if (vol > 0.4) {
+        } else if (vol > 0.75 && this.hud.numbers.length < 8) {
           this.hud.damageNumber(pos, `${e.dmg}`);
         }
         break;

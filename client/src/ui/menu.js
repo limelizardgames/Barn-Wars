@@ -2,6 +2,8 @@
 import * as THREE from 'three';
 import { ANIMALS, ANIMAL_IDS, MOVE_SLOTS } from '../../../shared/animals.js';
 import { buildAnimal, ANIMAL_EMOJI } from '../assets/animals.js';
+import { buildSculptedAnimal } from '../assets/rig.js';
+import { Animator } from '../game/animator.js';
 import { escapeHtml } from './hud.js';
 import { sfx } from '../game/audio.js';
 
@@ -91,11 +93,18 @@ export class Menu {
         this.camera.aspect = w / h;
         this.camera.updateProjectionMatrix();
       }
-      this.turntable.rotation.y = 0.55 + Math.sin(performance.now() / 1600) * 0.8;
-      if (this.model) {
-        const t = performance.now() / 1000;
-        this.model.rig.head.rotation.x = Math.sin(t * 2) * 0.1;
-        if (this.model.rig.tail) this.model.rig.tail.rotation.z = Math.sin(t * 5) * 0.3;
+      const now = performance.now() / 1000;
+      const dt = Math.min(0.1, now - (this.lastT || now));
+      this.lastT = now;
+      this.turntable.rotation.y = 0.55 + Math.sin(now / 1.6) * 0.8;
+      if (this.animator) {
+        // show off a move every few seconds
+        this.showT = (this.showT || 0) + dt;
+        if (this.showT > 3) {
+          this.showT = 0;
+          this.animator.trigger(MOVE_SLOTS[this.showIdx++ % 3]);
+        }
+        this.animator.update(dt, { grounded: true, yaw: 0, vy: 0 }, now, this.pose, { x: 0, z: 0 });
       }
       this.renderer.render(this.scene, this.camera);
     };
@@ -105,11 +114,17 @@ export class Menu {
   showModel(id) {
     if (!this.turntable) return;
     this.turntable.clear();
-    this.model = buildAnimal(id, '#e0302a');
-    this.turntable.add(this.model.root);
+    this.model = buildSculptedAnimal(id) || buildAnimal(id, '#e0302a');
+    this.pose = new THREE.Group();
+    this.pose.add(this.model.root);
+    this.turntable.add(this.pose);
+    this.animator = new Animator(this.model, id, ANIMALS[id]);
+    this.animator.spawn();
+    this.showT = 1.5;
+    this.showIdx = 0;
     const h = ANIMALS[id].stats.height;
-    const d = 3 + h * 2.2;
-    this.camera.position.set(0, h * 0.9 + 0.8, d);
+    const d = 2 + h * 1.9;
+    this.camera.position.set(0, h * 0.75 + 0.6, d);
     this.camera.lookAt(0, h * 0.5, 0);
   }
 
