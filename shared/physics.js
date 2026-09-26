@@ -4,7 +4,7 @@
 import {
   GRAVITY, GROUND_FRICTION, AIR_FRICTION, STEP_HEIGHT, BTN,
 } from './constants.js';
-import { ARENA_HALF, OBSTACLES, MUD_PITS } from './arena.js';
+import { ARENA_HALF, OBSTACLES, MUD_PITS, PONDS } from './arena.js';
 
 export function forwardVec(yaw) {
   return { x: Math.sin(yaw), z: Math.cos(yaw) };
@@ -44,6 +44,14 @@ export const BODY_FIELDS = [
 export function copyBody(dst, src) {
   for (const k of BODY_FIELDS) if (src[k] !== undefined) dst[k] = src[k];
   return dst;
+}
+
+export function inPond(x, z) {
+  for (const m of PONDS) {
+    const dx = x - m.x, dz = z - m.z;
+    if (dx * dx + dz * dz < m.r * m.r) return true;
+  }
+  return false;
 }
 
 export function inMud(x, z) {
@@ -131,6 +139,7 @@ export function stepBody(b, input, dt, animal) {
     const f = forwardVec(b.yaw), r = rightVec(b.yaw);
     let speed = stats.speed * b.slowMult * b.speedMult;
     if (b.grounded && inMud(b.x, b.z)) speed *= animal.id === 'pig' ? 1.25 : 0.65;
+    else if (b.grounded && inPond(b.x, b.z)) speed *= 0.7;
     wx = (f.x * mz + r.x * mx) * speed;
     wz = (f.z * mz + r.z * mx) * speed;
   }

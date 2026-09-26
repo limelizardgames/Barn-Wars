@@ -9,6 +9,7 @@ import { buildProjectile, SPLAT_COLORS } from '../assets/projectiles.js';
 import { PlayerView } from './PlayerView.js';
 import { Effects } from './effects.js';
 import { Input } from './input.js';
+import { Minimap } from '../ui/minimap.js';
 import { sfx, toggleMute } from './audio.js';
 
 const HIT_COLORS = {
@@ -38,10 +39,12 @@ export class Game {
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
 
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(70, 1, 0.1, 500);
-    this.env = buildEnvironment(this.scene);
+    this.camera = new THREE.PerspectiveCamera(70, 1, 0.1, 1500);
+    this.env = buildEnvironment(this.scene, this.renderer);
+    this.minimap = new Minimap(document.getElementById('minimap'));
     this.effects = new Effects(this.scene);
     this.input = new Input(canvas);
     this.input.enabled = true;
@@ -115,6 +118,8 @@ export class Game {
       } else if (code === 'Enter' && down) {
         this.openChat();
         e.preventDefault();
+      } else if (code === 'KeyN' && down) {
+        this.minimap.toggleZoom();
       } else if (code === 'KeyM' && down) {
         this.hud.announce('Sound toggled', 700);
         toggleMute();
@@ -474,6 +479,19 @@ export class Game {
       }
     }
     hud.updateNumbers(dt, this.camera, window.innerWidth, window.innerHeight);
+    if (snap) {
+      const selfView = this.views.get(this.localId);
+      const me = selfView && this.me?.alive ? selfView.group.position : this.me;
+      this.minimap.draw(me, this.input.yaw, this.renderedPlayers(snap), this.localId);
+    }
+  }
+
+  // Positions of everyone as currently drawn (interpolated), for the minimap.
+  renderedPlayers(snap) {
+    return snap.players.map((p) => {
+      const v = this.views.get(p.id);
+      return v && v.group.visible ? { ...p, x: v.group.position.x, z: v.group.position.z } : p;
+    });
   }
 
   // ---- events -----------------------------------------------------------------------

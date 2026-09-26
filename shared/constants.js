@@ -11,7 +11,7 @@ export const AIR_FRICTION = 1.5;
 export const STEP_HEIGHT = 0.45; // obstacles lower than this can be walked onto
 
 export const MAX_PLAYERS_PER_ROOM = 12;
-export const MIN_FIGHTERS = 6; // bots fill rooms up to this many fighters
+export const MIN_FIGHTERS = 8; // bots fill rooms up to this many fighters
 export const RESPAWN_TIME = 4; // seconds
 export const SPAWN_PROTECTION = 1.5; // seconds of invulnerability after spawning
 

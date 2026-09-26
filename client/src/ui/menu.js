@@ -91,7 +91,7 @@ export class Menu {
         this.camera.aspect = w / h;
         this.camera.updateProjectionMatrix();
       }
-      this.turntable.rotation.y += 0.01;
+      this.turntable.rotation.y = 0.55 + Math.sin(performance.now() / 1600) * 0.8;
       if (this.model) {
         const t = performance.now() / 1000;
         this.model.rig.head.rotation.x = Math.sin(t * 2) * 0.1;

@@ -406,3 +406,23 @@ button { font-family: inherit; cursor: pointer; }
   gap: 8px;
 }
 #swap-panel h3 { grid-column: 1 / -1; margin: 0; text-align: center; }
+
+#minimap-wrap {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  width: 190px;
+  text-align: center;
+}
+#minimap {
+  width: 190px;
+  height: 190px;
+  display: block;
+  border-radius: 50%;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+#minimap-wrap span { font-size: 11px; opacity: 0.75; text-shadow: 1px 1px 0 #000; }
+@media (max-width: 1100px) {
+  #minimap-wrap, #minimap { width: 140px; }
+  #minimap { height: 140px; }
+}

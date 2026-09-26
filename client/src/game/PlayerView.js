@@ -194,6 +194,14 @@ export class PlayerView {
     }
 
     // statuses
+    // blinking
+    if (rig.eyes) {
+      this.blinkT = (this.blinkT ?? 1 + Math.random() * 3) - dt;
+      const closed = this.blinkT < 0.12 || s.stunT > 0;
+      if (this.blinkT < 0) this.blinkT = 2 + Math.random() * 4;
+      for (const e of rig.eyes) e.scale.y = closed ? 0.15 : 1;
+    }
+
     this.stars.visible = s.stunT > 0;
     if (this.stars.visible) this.stars.rotation.y = time * 5;
     this.shield.visible = s.shieldT > 0 && this.animalId !== 'sheep';

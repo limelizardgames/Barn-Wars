@@ -29,7 +29,7 @@
         <label>Room <input id="room-input" maxlength="24" placeholder="farm" autocomplete="off" /></label>
         <button id="play-btn" class="big-btn">To Battle!</button>
       </footer>
-      <p class="controls-hint">WASD move · Mouse aim · Space jump (double-tap for chickens) · LMB attack · RMB / Q ability · E ability · Tab scores · Enter chat</p>
+      <p class="controls-hint">WASD move · Mouse aim · Space jump (double-tap for chickens) · LMB attack · RMB / Q ability · E ability · Tab scores · N minimap zoom · Enter chat</p>
       <p id="menu-error" class="error"></p>
     </div>
   </div>
@@ -51,6 +51,7 @@
       </div>
       <div id="abilities"></div>
     </div>
+    <div id="minimap-wrap"><canvas id="minimap"></canvas><span>N: zoom</span></div>
     <div id="chat">
       <div id="chat-log"></div>
       <input id="chat-input" maxlength="120" placeholder="Say something… (Enter)" class="hidden" />
