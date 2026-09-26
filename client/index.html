@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Barn Wars</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐄</text></svg>" />
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- Main menu / animal select -->
+  <div id="menu" class="overlay">
+    <div class="menu-inner">
+      <header class="logo">
+        <h1>BARN <span>WARS</span></h1>
+        <p class="tagline">Pick an animal. Wage war on the rest of the farm.</p>
+      </header>
+      <div class="menu-body">
+        <div class="roster" id="roster"></div>
+        <div class="details">
+          <canvas id="preview"></canvas>
+          <div id="animal-info"></div>
+        </div>
+      </div>
+      <footer class="join-row">
+        <label>Name <input id="name-input" maxlength="16" placeholder="Farmhand" autocomplete="off" /></label>
+        <label>Room <input id="room-input" maxlength="24" placeholder="farm" autocomplete="off" /></label>
+        <button id="play-btn" class="big-btn">To Battle!</button>
+      </footer>
+      <p class="controls-hint">WASD move · Mouse aim · Space jump (double-tap for chickens) · LMB attack · RMB / Q ability · E ability · Tab scores · Enter chat</p>
+      <p id="menu-error" class="error"></p>
+    </div>
+  </div>
+
+  <!-- In-game HUD -->
+  <div id="hud" class="hidden">
+    <div id="crosshair"><div id="hitmarker"></div></div>
+    <div id="top-left">
+      <div id="match-timer">5:00</div>
+      <div id="match-sub"></div>
+    </div>
+    <div id="top-center"><div id="announce"></div></div>
+    <div id="killfeed"></div>
+    <div id="bottom">
+      <div id="player-card">
+        <div id="player-name"></div>
+        <div class="hpbar"><div id="hp-fill"></div><span id="hp-text"></span></div>
+        <div id="status-icons"></div>
+      </div>
+      <div id="abilities"></div>
+    </div>
+    <div id="chat">
+      <div id="chat-log"></div>
+      <input id="chat-input" maxlength="120" placeholder="Say something… (Enter)" class="hidden" />
+    </div>
+    <div id="vignette"></div>
+    <div id="damage-numbers"></div>
+    <div id="scoreboard" class="hidden"></div>
+    <div id="death-screen" class="hidden">
+      <h2 id="death-title">Bonked!</h2>
+      <p id="death-sub"></p>
+      <p id="respawn-count"></p>
+      <button id="swap-btn" class="small-btn">Change animal</button>
+    </div>
+    <div id="pause" class="hidden">
+      <h2>Paused</h2>
+      <p>Click the game to resume</p>
+      <button id="pause-swap-btn" class="small-btn">Change animal</button>
+      <button id="leave-btn" class="small-btn">Leave match</button>
+    </div>
+    <div id="swap-panel" class="hidden"></div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
